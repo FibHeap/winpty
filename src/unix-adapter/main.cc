@@ -51,6 +51,7 @@
 #define CSI "\x1b["
 
 static WakeupFd *g_mainWakeup = NULL;
+static bool g_silent = false;
 
 static WakeupFd &mainWakeup()
 {
@@ -66,18 +67,18 @@ static WakeupFd &mainWakeup()
 static termios setRawTerminalMode()
 {
     if (!isatty(STDIN_FILENO)) {
-        fprintf(stderr, "input is not a tty\n");
-        exit(1);
+        if(!g_silent) fprintf(stderr, "input is not a tty\n");
+        exit(100);
     }
     if (!isatty(STDOUT_FILENO)) {
-        fprintf(stderr, "output is not a tty\n");
-        exit(1);
+        if(!g_silent) fprintf(stderr, "output is not a tty\n");
+        exit(101);
     }
 
     termios buf;
     if (tcgetattr(STDIN_FILENO, &buf) < 0) {
-        perror("tcgetattr failed");
-        exit(1);
+        if(!g_silent) perror("tcgetattr failed");
+        exit(103);
     }
     termios saved = buf;
     buf.c_lflag &= ~(ECHO | ICANON | IEXTEN | ISIG);
@@ -88,8 +89,8 @@ static termios setRawTerminalMode()
     buf.c_cc[VMIN] = 1;  // blocking read
     buf.c_cc[VTIME] = 0;
     if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &buf) < 0) {
-        fprintf(stderr, "tcsetattr failed\n");
-        exit(1);
+        if(!g_silent) fprintf(stderr, "tcsetattr failed\n");
+        exit(104);
     }
     return saved;
 }
@@ -98,13 +99,13 @@ static void restoreTerminalMode(termios original)
 {
     if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &original) < 0) {
         perror("error restoring terminal mode");
-        exit(1);
+        exit(105);
     }
 }
 
 static void debugShowKey()
 {
-    printf("\r\nPress any keys -- Ctrl-D exits\r\n\r\n");
+    if(!g_silent) printf("\r\nPress any keys -- Ctrl-D exits\r\n\r\n");
     const termios saved = setRawTerminalMode();
     char buf[128];
     while (true) {
@@ -316,6 +317,12 @@ static void parseArguments(int argc, char *argv[], Arguments &out)
             } else if (arg == "--version") {
                 dumpVersionToStdout();
                 exit(0);
+            } else if (arg == "--silent") {
+                g_silent = true;
+            } else if (arg == "--test") {
+              termios mode = setRawTerminalMode();
+              restoreTerminalMode(mode);
+              exit(0);
             } else if (arg == "--") {
                 break;
             } else {
@@ -351,8 +358,8 @@ int main(int argc, char *argv[])
 
     winpty_t *winpty = winpty_open(sz.ws_col, sz.ws_row);
     if (winpty == NULL) {
-        fprintf(stderr, "Error creating winpty.\n");
-        exit(1);
+        if(!g_silent) fprintf(stderr, "Error creating winpty.\n");
+        exit(110);
     }
 
     {
@@ -366,11 +373,11 @@ int main(int argc, char *argv[])
                                              NULL,
                                              NULL);
         if (ret != 0) {
-            fprintf(stderr,
+            if(!g_silent) fprintf(stderr,
                     "Error %#x starting %s\n",
                     (unsigned int)ret,
                     cmdLine.c_str());
-            exit(1);
+            exit(111);
         }
         delete [] cmdLineW;
     }
